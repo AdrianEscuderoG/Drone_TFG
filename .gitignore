@@ -1,0 +1,19 @@
+# ROS2 build artifacts
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+src/ardupilot_gazebo
+src/ardupilot
+src/open_vins
+src/px4_msgs

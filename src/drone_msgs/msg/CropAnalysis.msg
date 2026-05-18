@@ -1,0 +1,6 @@
+std_msgs/Header header
+string zone_id
+float32 health_score
+uint8 alert_level
+geometry_msgs/PoseStamped location
+vision_msgs/Detection2DArray detections
