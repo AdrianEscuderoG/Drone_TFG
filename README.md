@@ -1,7 +1,7 @@
 # Mi Proyecto ROS2
 
 ## Requisitos
-- ROS2 Jazzy / Humble
+- ROS2 Jazzy
 - Ubuntu 24.04
 
 ## Instalación
