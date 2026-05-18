@@ -15,16 +15,15 @@ setup(
     zip_safe=True,
     maintainer='adrianeg',
     maintainer_email='aescgar3@upv.edu.es',
-    description='TODO: Package description',
-    license='TODO: License declaration',
+    description='Piloto autónomo: máquina de estados, PID y generador de misiones.',
+    license='Apache-2.0',
     extras_require={
-        'test': [
-            'pytest',
-        ],
+        'test': ['pytest'],
     },
     entry_points={
         'console_scripts': [
-            'pilot_node = drone_pilot.pilot_node:main'
+            'pilot_node = drone_pilot.pilot_node:main',
+            'mission_generator = drone_pilot.mission_generator:main',
         ],
     },
 )

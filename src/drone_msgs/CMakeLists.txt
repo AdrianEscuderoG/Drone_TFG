@@ -12,6 +12,7 @@ find_package(builtin_interfaces REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CropAnalysis.msg"
   "msg/DroneStatus.msg"
+  "msg/MissionPlan.msg"
   "msg/MissionWaypoint.msg"
   "srv/GetDroneState.srv"
   DEPENDENCIES

@@ -1,0 +1,36 @@
+# Parámetros del piloto autónomo (pilot_node)
+# Ajustar ganancias PID según el comportamiento observado en SITL.
+#
+# Regla de ajuste rápido:
+#   1. Sube kp_xy hasta que el dron llegue al waypoint con oscilaciones pequeñas.
+#   2. Añade kd_xy (0.1–0.3) para amortiguar las oscilaciones.
+#   3. Repite para kp_z / kd_z.
+#   4. Ajusta kp_yaw para una rotación suave sin sobreoscilación.
+
+pilot_node:
+  ros__parameters:
+
+    # -- PID horizontal (X e Y en marco ENU) --
+    kp_xy: 0.5        # Ganancia proporcional horizontal
+    ki_xy: 0.0        # Integral (dejar a 0 en SITL; activar solo si hay offset persistente)
+    kd_xy: 0.15       # Derivativa horizontal (amortiguación)
+
+    # -- PID vertical (Z en marco ENU) --
+    kp_z: 0.6
+    ki_z: 0.0
+    kd_z: 0.15
+
+    # -- PID guiñada --
+    kp_yaw: 1.0       # Ganancia proporcional yaw rate
+
+    # -- Límites de velocidad --
+    max_vel_xy: 2.0   # m/s — velocidad máxima horizontal
+    max_vel_z: 1.0    # m/s — velocidad máxima vertical
+    max_yaw_rate: 0.5 # rad/s — tasa de guiñada máxima
+
+    # -- Tolerancias de llegada al waypoint --
+    pos_tol_xy: 0.5   # m — radio horizontal de llegada
+    pos_tol_z: 0.3    # m — tolerancia vertical de llegada
+
+    # -- Misión por defecto --
+    default_takeoff_alt: 5.0  # m — altitud de despegue si la misión no especifica
