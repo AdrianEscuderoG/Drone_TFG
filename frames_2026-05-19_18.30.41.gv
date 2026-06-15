@@ -1,0 +1,9 @@
+digraph G {
+"global" -> "imu"[label=" Broadcaster: default_authority\nAverage rate: 138.326\nBuffer length: 5.046\nMost recent transform: 1779208241.189213\nOldest transform: 1779208236.143159\n"];
+"imu" -> "cam0"[label=" Broadcaster: default_authority\nAverage rate: 140.87\nBuffer length: 3.599\nMost recent transform: 1779208241.189262\nOldest transform: 1779208237.590199\n"];
+"map" -> "odom"[label=" Broadcaster: default_authority\nAverage rate: 20.271\nBuffer length: 3.7\nMost recent transform: 1403636619.796319\nOldest transform: 1403636616.096385\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1779208241.2029083"[ shape=plaintext ] ;
+}->"map";
+}

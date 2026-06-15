@@ -2,21 +2,24 @@
 pilot_node.py
 
 Piloto autónomo del dron. Implementa una máquina de estados que ejecuta
-misiones de waypoints publicadas en /drone/mission (MissionPlan).
+órdenes asíncronas recibidas en /drone/pilot_cmd (PilotCommand).
 
-Flujo típico:
-  1. Publicar misión en /drone/mission (MissionPlan)
-  2. Llamar al servicio /drone/start_mission
-  3. El piloto despega, recorre los waypoints con PID y aterriza.
+Comandos soportados (PilotCommand.command_type):
+  TAKEOFF        — despegar hasta takeoff_altitude (0 = usar default_takeoff_alt)
+  GOTO_RELATIVE  — moverse a [x, y, z, yaw] relativo al marco del dron
+  GOTO_GLOBAL    — moverse a [x, y, z, yaw] en el marco global ENU (map)
+  LAND           — aterrizar en la posición actual
+  EMERGENCY      — abortar inmediatamente y aterrizar
+
+Tras un despegue o un movimiento, el dron se queda estático (HOVERING) en el
+punto de destino esperando la siguiente orden.
 
 Interfaz:
-  Sub  /drone/state         (DroneStatus)      — pose VIO y vio_ok
+  Sub  /drone/state         (DroneStatus)       — pose VIO y vio_ok
   Sub  /mavros/state        (mavros_msgs/State) — armado y modo de vuelo
-  Sub  /drone/mission       (MissionPlan)       — lista de waypoints
+  Sub  /drone/pilot_cmd     (PilotCommand)      — órdenes asíncronas
   Pub  /drone/cmd_vel       (TwistStamped)      — velocidades ENU (frame_id="map")
   Pub  /drone/pilot_status  (String)            — nombre del estado actual
-  Srv  /drone/start_mission (Trigger)           — inicia la misión cargada
-  Srv  /drone/abort_mission (Trigger)           — aborta y aterriza
   Cli  /mavros/cmd/takeoff  (CommandTOL)        — despegue inicial
   Cli  /mavros/set_mode     (SetMode)           — solicitar modo LAND
 """
@@ -32,9 +35,8 @@ from geometry_msgs.msg import TwistStamped
 from mavros_msgs.msg import State as MavrosState
 from mavros_msgs.srv import CommandTOL, SetMode
 from std_msgs.msg import String
-from std_srvs.srv import Trigger
 
-from drone_msgs.msg import DroneStatus, MissionPlan
+from drone_msgs.msg import DroneStatus, PilotCommand
 from drone_pilot.pid_controller import PIDController
 
 RELIABLE_QOS = QoSProfile(
@@ -48,7 +50,7 @@ class FlightState(Enum):
     IDLE = auto()
     TAKING_OFF = auto()
     NAVIGATING = auto()
-    LOITERING = auto()
+    HOVERING = auto()
     LANDING = auto()
     EMERGENCY = auto()
 
@@ -73,6 +75,7 @@ class PilotNode(Node):
         self.declare_parameter('max_yaw_rate', 0.5)  # rad/s
         self.declare_parameter('pos_tol_xy', 0.5)    # m
         self.declare_parameter('pos_tol_z', 0.3)     # m
+        self.declare_parameter('yaw_tol', 0.1)       # rad
         self.declare_parameter('default_takeoff_alt', 5.0)  # m
 
         kp_xy = self.get_parameter('kp_xy').value
@@ -87,6 +90,7 @@ class PilotNode(Node):
         max_yaw_rate = self.get_parameter('max_yaw_rate').value
         self._tol_xy = self.get_parameter('pos_tol_xy').value
         self._tol_z = self.get_parameter('pos_tol_z').value
+        self._tol_yaw = self.get_parameter('yaw_tol').value
         self._default_takeoff_alt = self.get_parameter('default_takeoff_alt').value
 
         # --- Controladores PID ---
@@ -97,11 +101,11 @@ class PilotNode(Node):
 
         # --- Estado interno ---
         self._state = FlightState.IDLE
-        self._mission: MissionPlan | None = None
-        self._wp_idx = 0
-        self._loiter_start = None
         self._takeoff_alt = self._default_takeoff_alt
         self._land_mode_sent = False
+
+        # Punto objetivo actual [x, y, z, yaw] en ENU (NAVIGATING/HOVERING)
+        self._target = [0.0, 0.0, 0.0, 0.0]
 
         # Pose actual en ENU
         self._pos = [0.0, 0.0, 0.0]
@@ -120,15 +124,11 @@ class PilotNode(Node):
         self.create_subscription(
             MavrosState, '/mavros/state', self._on_mavros_state, RELIABLE_QOS)
         self.create_subscription(
-            MissionPlan, '/drone/mission', self._on_mission, RELIABLE_QOS)
+            PilotCommand, '/drone/pilot_cmd', self._on_command, RELIABLE_QOS)
 
         # --- Publicaciones ---
         self._pub_cmd = self.create_publisher(TwistStamped, '/drone/cmd_vel', RELIABLE_QOS)
         self._pub_status = self.create_publisher(String, '/drone/pilot_status', RELIABLE_QOS)
-
-        # --- Servicios expuestos ---
-        self.create_service(Trigger, '/drone/start_mission', self._svc_start)
-        self.create_service(Trigger, '/drone/abort_mission', self._svc_abort)
 
         # --- Clientes de servicio ---
         self._cli_takeoff = self.create_client(CommandTOL, '/mavros/cmd/takeoff')
@@ -137,7 +137,7 @@ class PilotNode(Node):
         # --- Timer de control ---
         self.create_timer(1.0 / self.CONTROL_HZ, self._control_loop)
 
-        self.get_logger().info('pilot_node iniciado. Esperando misión...')
+        self.get_logger().info('pilot_node iniciado. Esperando órdenes en /drone/pilot_cmd...')
 
     # ------------------------------------------------------------------
     # Callbacks de suscripción
@@ -153,7 +153,7 @@ class PilotNode(Node):
         if (not self._vio_ok
                 and self._state in (FlightState.TAKING_OFF,
                                     FlightState.NAVIGATING,
-                                    FlightState.LOITERING)):
+                                    FlightState.HOVERING)):
             self.get_logger().error('VIO perdido durante el vuelo. Emergencia.')
             self._switch(FlightState.EMERGENCY)
 
@@ -161,48 +161,78 @@ class PilotNode(Node):
         self._mavros_armed = msg.armed
         self._mavros_mode = msg.mode
 
-    def _on_mission(self, msg: MissionPlan) -> None:
+    def _on_command(self, msg: PilotCommand) -> None:
+        if msg.command_type == PilotCommand.TAKEOFF:
+            self._cmd_takeoff(msg)
+        elif msg.command_type == PilotCommand.GOTO_RELATIVE:
+            self._cmd_goto_relative(msg)
+        elif msg.command_type == PilotCommand.GOTO_GLOBAL:
+            self._cmd_goto_global(msg)
+        elif msg.command_type == PilotCommand.LAND:
+            self._cmd_land()
+        elif msg.command_type == PilotCommand.EMERGENCY:
+            self.get_logger().warn('Orden de EMERGENCIA recibida.')
+            self._switch(FlightState.EMERGENCY)
+        else:
+            self.get_logger().warn(
+                f'Tipo de comando desconocido: {msg.command_type}')
+
+    # ------------------------------------------------------------------
+    # Manejadores de comandos
+    # ------------------------------------------------------------------
+
+    def _cmd_takeoff(self, msg: PilotCommand) -> None:
         if self._state != FlightState.IDLE:
-            self.get_logger().warn('Misión recibida fuera de IDLE — ignorada.')
+            self.get_logger().warn(
+                f'TAKEOFF ignorado: el piloto no está en IDLE ({self._state.name}).')
             return
-        self._mission = msg
-        self._takeoff_alt = (float(msg.takeoff_altitude)
-                             if msg.takeoff_altitude > 0.0
-                             else self._default_takeoff_alt)
-        self.get_logger().info(
-            f'Misión cargada: {len(msg.waypoints)} waypoints, '
-            f'altitud despegue={self._takeoff_alt:.1f} m')
-
-    # ------------------------------------------------------------------
-    # Servicios
-    # ------------------------------------------------------------------
-
-    def _svc_start(self, _req, response):
-        if self._mission is None or len(self._mission.waypoints) == 0:
-            response.success = False
-            response.message = 'No hay misión cargada.'
-            return response
         if not self._mavros_armed:
-            response.success = False
-            response.message = 'El dron no está armado todavía.'
-            return response
-        if self._state != FlightState.IDLE:
-            response.success = False
-            response.message = f'El piloto ya está activo ({self._state.name}).'
-            return response
-        self._wp_idx = 0
+            self.get_logger().warn('TAKEOFF ignorado: el dron no está armado.')
+            return
+        self._takeoff_alt = (float(msg.takeoff_altitude)
+                              if msg.takeoff_altitude > 0.0
+                              else self._default_takeoff_alt)
         self._reset_pids()
         self._switch(FlightState.TAKING_OFF)
-        response.success = True
-        response.message = f'Misión iniciada. Despegando a {self._takeoff_alt:.1f} m.'
-        return response
 
-    def _svc_abort(self, _req, response):
-        self.get_logger().warn('Misión abortada por el usuario.')
+    def _cmd_goto_relative(self, msg: PilotCommand) -> None:
+        if self._state not in (FlightState.HOVERING, FlightState.NAVIGATING):
+            self.get_logger().warn(
+                f'GOTO_RELATIVE ignorado: el piloto no está volando ({self._state.name}).')
+            return
+        # [x, y, z, yaw] relativos al marco del dron (x: adelante, y: izquierda)
+        cos_y, sin_y = math.cos(self._yaw), math.sin(self._yaw)
+        dx = msg.x * cos_y - msg.y * sin_y
+        dy = msg.x * sin_y + msg.y * cos_y
+        target = [
+            self._pos[0] + dx,
+            self._pos[1] + dy,
+            self._pos[2] + msg.z,
+            _norm_angle(self._yaw + msg.yaw),
+        ]
+        self._set_target(target)
+
+    def _cmd_goto_global(self, msg: PilotCommand) -> None:
+        if self._state not in (FlightState.HOVERING, FlightState.NAVIGATING):
+            self.get_logger().warn(
+                f'GOTO_GLOBAL ignorado: el piloto no está volando ({self._state.name}).')
+            return
+        target = [msg.x, msg.y, msg.z, _norm_angle(msg.yaw)]
+        self._set_target(target)
+
+    def _cmd_land(self) -> None:
+        if self._state in (FlightState.IDLE, FlightState.LANDING, FlightState.EMERGENCY):
+            return
+        self.get_logger().info('Orden de aterrizaje recibida.')
         self._switch(FlightState.LANDING)
-        response.success = True
-        response.message = 'Iniciando aterrizaje.'
-        return response
+
+    def _set_target(self, target: list) -> None:
+        self._target = target
+        self._reset_pids()
+        self.get_logger().info(
+            f'Nuevo objetivo: x={target[0]:.2f} y={target[1]:.2f} '
+            f'z={target[2]:.2f} yaw={target[3]:.2f}')
+        self._switch(FlightState.NAVIGATING)
 
     # ------------------------------------------------------------------
     # Bucle de control (20 Hz)
@@ -226,8 +256,8 @@ class PilotNode(Node):
             self._handle_takeoff()
         elif self._state == FlightState.NAVIGATING:
             self._handle_navigate(dt)
-        elif self._state == FlightState.LOITERING:
-            self._handle_loiter(dt)
+        elif self._state == FlightState.HOVERING:
+            self._handle_hover(dt)
         elif self._state in (FlightState.LANDING, FlightState.EMERGENCY):
             self._handle_landing()
 
@@ -242,68 +272,36 @@ class PilotNode(Node):
         if abs(err_z) < self._tol_z:
             self.get_logger().info(
                 f'Altitud de despegue alcanzada: {self._pos[2]:.2f} m')
+            self._target = [self._pos[0], self._pos[1], self._takeoff_alt, self._yaw]
             self._reset_pids()
-            self._switch(FlightState.NAVIGATING)
+            self._switch(FlightState.HOVERING)
 
     def _handle_navigate(self, dt: float) -> None:
-        if self._mission is None or self._wp_idx >= len(self._mission.waypoints):
-            self._switch(FlightState.LANDING)
-            return
-
-        wp = self._mission.waypoints[self._wp_idx]
-        tx = wp.pose.pose.position.x
-        ty = wp.pose.pose.position.y
-        tz = wp.pose.pose.position.z
-
-        ex, ey, ez = tx - self._pos[0], ty - self._pos[1], tz - self._pos[2]
+        ex, ey, ez, eyaw = self._position_errors()
         dist_xy = math.hypot(ex, ey)
-
-        # Control de guiñada: apuntar hacia el waypoint si está lejos
-        if dist_xy > 0.3:
-            yaw_err = _norm_angle(math.atan2(ey, ex) - self._yaw)
-        else:
-            yaw_err = 0.0
 
         self._cmd(
             self._pid_x.compute(ex, dt),
             self._pid_y.compute(ey, dt),
             self._pid_z.compute(ez, dt),
-            self._pid_yaw.compute(yaw_err, dt),
+            self._pid_yaw.compute(eyaw, dt),
         )
 
-        if dist_xy < self._tol_xy and abs(ez) < self._tol_z:
-            self.get_logger().info(f'Waypoint {self._wp_idx} alcanzado.')
+        if dist_xy < self._tol_xy and abs(ez) < self._tol_z and abs(eyaw) < self._tol_yaw:
+            self.get_logger().info('Objetivo alcanzado. Esperando siguiente orden.')
             self._reset_pids()
-            self._switch(FlightState.LOITERING)
+            self._switch(FlightState.HOVERING)
 
-    def _handle_loiter(self, dt: float) -> None:
-        wp = self._mission.waypoints[self._wp_idx]
-        tx = wp.pose.pose.position.x
-        ty = wp.pose.pose.position.y
-        tz = wp.pose.pose.position.z
-
-        # Corrección suave de posición durante el hover
+    def _handle_hover(self, dt: float) -> None:
+        # Mantiene la posición/orientación objetivo mediante correcciones PID
+        # mientras se espera la siguiente orden.
+        ex, ey, ez, eyaw = self._position_errors()
         self._cmd(
-            self._pid_x.compute(tx - self._pos[0], dt),
-            self._pid_y.compute(ty - self._pos[1], dt),
-            self._pid_z.compute(tz - self._pos[2], dt),
-            0.0,
+            self._pid_x.compute(ex, dt),
+            self._pid_y.compute(ey, dt),
+            self._pid_z.compute(ez, dt),
+            self._pid_yaw.compute(eyaw, dt),
         )
-
-        elapsed = (self.get_clock().now() - self._loiter_start).nanoseconds * 1e-9
-        loiter_time = float(wp.loiter_time) if wp.loiter_time > 0.0 else 2.0
-
-        if elapsed >= loiter_time:
-            if wp.capture_image:
-                self.get_logger().info(
-                    f'[WP {self._wp_idx}] Captura de imagen registrada.')
-            self._wp_idx += 1
-            self._reset_pids()
-            if self._wp_idx >= len(self._mission.waypoints):
-                self.get_logger().info('Misión completada. Iniciando aterrizaje.')
-                self._switch(FlightState.LANDING)
-            else:
-                self._switch(FlightState.NAVIGATING)
 
     def _handle_landing(self) -> None:
         self._cmd(0.0, 0.0, 0.0, 0.0)
@@ -314,7 +312,6 @@ class PilotNode(Node):
         # ArduPilot desarmará automáticamente al tocar tierra
         if self._land_mode_sent and not self._mavros_armed:
             self.get_logger().info('Aterrizaje completado.')
-            self._mission = None
             self._land_mode_sent = False
             self._state = FlightState.IDLE
             self.get_logger().info('Piloto en espera (IDLE).')
@@ -332,8 +329,6 @@ class PilotNode(Node):
         if new == FlightState.TAKING_OFF:
             self._land_mode_sent = False
             self._call_takeoff()
-        elif new == FlightState.LOITERING:
-            self._loiter_start = self.get_clock().now()
         elif new in (FlightState.LANDING, FlightState.EMERGENCY):
             self._land_mode_sent = False
 
@@ -377,6 +372,13 @@ class PilotNode(Node):
     # ------------------------------------------------------------------
     # Utilidades
     # ------------------------------------------------------------------
+
+    def _position_errors(self) -> tuple:
+        ex = self._target[0] - self._pos[0]
+        ey = self._target[1] - self._pos[1]
+        ez = self._target[2] - self._pos[2]
+        eyaw = _norm_angle(self._target[3] - self._yaw)
+        return ex, ey, ez, eyaw
 
     def _cmd(self, vx: float, vy: float, vz: float, yaw_rate: float) -> None:
         msg = TwistStamped()

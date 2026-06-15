@@ -174,9 +174,16 @@ def generate_launch_description():
         vio_launch,
 
         LogInfo(msg='=== Todos los nodos lanzados. ==='),
-        LogInfo(msg='Para cargar una misión de escaneo en grid:'),
-        LogInfo(msg='  ros2 run drone_pilot mission_generator '
-                    '--ros-args -p altitude:=10.0 -p field_width:=50.0'),
-        LogInfo(msg='Para iniciar la misión una vez cargada y armado:'),
-        LogInfo(msg='  ros2 service call /drone/start_mission std_srvs/srv/Trigger'),
+        LogInfo(msg='El piloto espera órdenes asíncronas en /drone/pilot_cmd '
+                    '(drone_msgs/msg/PilotCommand).'),
+        LogInfo(msg='Ejemplo de despegue (con el dron armado en GUIDED):'),
+        LogInfo(msg="  ros2 topic pub -1 /drone/pilot_cmd drone_msgs/msg/PilotCommand "
+                    "\"{command_type: 0, takeoff_altitude: 5.0}\""),
+        LogInfo(msg='Ejemplo de movimiento relativo al dron (5 m adelante):'),
+        LogInfo(msg="  ros2 topic pub -1 /drone/pilot_cmd drone_msgs/msg/PilotCommand "
+                    "\"{command_type: 1, x: 5.0, y: 0.0, z: 0.0, yaw: 0.0}\""),
+        LogInfo(msg='Ejemplo de aterrizaje:'),
+        LogInfo(msg="  ros2 topic pub -1 /drone/pilot_cmd drone_msgs/msg/PilotCommand "
+                    "\"{command_type: 3}\""),
+
     ])

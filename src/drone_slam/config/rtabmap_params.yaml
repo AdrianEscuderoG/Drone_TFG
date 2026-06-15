@@ -1,0 +1,108 @@
+# rtabmap_params.yaml
+#
+# Configuración de RTAB-Map para modo visual monocular con odometría
+# externa proporcionada por OpenVINS (EKF-MSCKF).
+#
+# RTAB-Map NO calcula odometría en este setup: la delega completamente
+# a OpenVINS y se centra en construir el mapa y detectar loop closures.
+#
+# Modos de uso:
+#   Test con EuRoC:  image=/cam0/image_raw  odom=/ov_msckf/odomimu
+#   Producción:      image=/drone/image      odom=/ov_msckf/odomimu
+
+rtabmap:
+  ros__parameters:
+
+    # ── Fuentes de datos ────────────────────────────────────────────────
+    # Recibe odometría externa de OpenVINS. RTAB-Map no intentará
+    # calcular su propia odometría visual (que sería redundante y peor).
+    subscribe_odom:       true
+    subscribe_odom_info:  false   # OpenVINS no publica OdomInfo
+    subscribe_depth:      false   # sin cámara RGBD
+    subscribe_stereo:     false   # modo monocular
+    subscribe_rgb:        true    # sí recibe imagen RGB (o grayscale)
+
+    # ── Frames TF ──────────────────────────────────────────────────────
+    # frame_id: frame del cuerpo del robot/dron
+    # odom_frame_id: frame de odometría VIO (origen relativo)
+    # map_frame_id: frame del mapa global SLAM (corregido por loop closure)
+    #
+    # Jerarquía TF resultante: map → global → imu
+    # El salto map→odom lo corrige RTAB-Map en cada loop closure.
+    frame_id:       imu
+    odom_frame_id:  global
+    map_frame_id:   map
+    Mem/UseOdomFeatures: "false"
+
+    # ── Creación de nodos del grafo ─────────────────────────────────────
+    # Cada cuántos segundos RTAB-Map añade un nodo nuevo al grafo de poses.
+    # 0.5 Hz de creación = un nodo cada 2 segundos.
+    #
+    # Por qué no más rápido: OpenVINS publica a 50 Hz. Si RTAB-Map
+    # intentara crear un nodo por frame saturaría la CPU y la base de datos.
+    # Para un dron en campo abierto 0.5 Hz es más que suficiente.
+    Rtabmap/DetectionRate: "0.5"
+
+    # Tiempo mínimo entre intentos de loop closure (segundos).
+    # Evita que el mismo lugar se verifique continuamente mientras
+    # el dron está estático.
+    Rtabmap/TimeThr: "0"
+
+    # ── Memoria ────────────────────────────────────────────────────────
+    # Tamaño de la Short-Term Memory (STM): nodos recientes que siempre
+    # se comparan con la imagen actual para encontrar loops locales.
+    # 30 nodos × 2 s/nodo = ~60 s de memoria de trabajo activa.
+    Mem/STMSize: "30"
+
+    # Guardar el mapa en disco entre sesiones (base de datos SQLite).
+    # Si es true, al reiniciar RTAB-Map carga el mapa anterior.
+    # Útil para misiones largas o multi-sesión.
+    Mem/IncrementalMemory: "true"
+
+    # Umbral de similitud para considerar dos imágenes como el mismo lugar.
+    # Rango 0–1. Valores más altos = más estricto = menos falsos positivos
+    # pero más falsos negativos (loops no detectados).
+    # 0.45 es conservador: preferimos no cerrar un loop dudoso a cerrar
+    # uno incorrecto, que podría romper el mapa.
+    Mem/RehearsalSimilarity: "0.3"
+
+    # ── Detector de features visuales ──────────────────────────────────
+    # RTAB-Map usa ORB por defecto, que funciona bien con imágenes
+    # monocromas (opera sobre intensidad, no color).
+    # Número de features ORB por imagen. 500 es el balance
+    # rendimiento/precisión para hardware embarcado.
+    Kp/MaxFeatures: "500"
+
+    # Detector de features para la descripción visual del lugar (bag-of-words).
+    # 6 = ORB. Alternativas: 2=SURF (más lento), 11=BRISK.
+    # ORB es la mejor opción para monocular grayscale en tiempo real.
+    Kp/DetectorStrategy: "6"
+
+    # ── Mapa de ocupación 2D (para Nav2) ───────────────────────────────
+    # Proyecta el mapa 3D al plano XY colapsando columnas de vóxeles:
+    # si cualquier vóxel de una columna está ocupado, la celda 2D = ocupada.
+    occupancy_grid: true
+
+    # Sin cámara de profundidad, el grid se genera desde la nube de puntos
+    # sparse de features. Es menos denso que con RGBD pero navegable.
+    Grid/FromDepth: "false"
+
+    # Rango máximo de celdas ocupadas. Más allá de 10 m la nube de
+    # features monocular es muy imprecisa por la escala ambigua.
+    Grid/RangeMax:  "10.0"
+
+    # Ignorar vóxeles por debajo de esta altura (suelo).
+    # Evita que el suelo mismo aparezca como obstáculo en el costmap.
+    Grid/MinGroundHeight: "0.1"
+
+    # Ignorar vóxeles por encima de esta altura.
+    # Para un dron a 10 m de altitud, obstáculos de más de 15 m
+    # no son relevantes para la navegación.
+    Grid/MaxObstacleHeight: "15.0"
+
+    # ── Publicaciones de salida ─────────────────────────────────────────
+    # Todos estos topics se pueden visualizar en rviz2:
+    #   /rtabmap/cloud_map       → PointCloud2 (nube 3D del entorno)
+    #   /rtabmap/grid_map        → OccupancyGrid (mapa 2D para Nav2)
+    #   /rtabmap/mapGraph        → MarkerArray (nodos + aristas del grafo)
+    #   /rtabmap/localization_pose → PoseWithCovarianceStamped (pose corregida)

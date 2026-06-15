@@ -14,6 +14,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DroneStatus.msg"
   "msg/MissionPlan.msg"
   "msg/MissionWaypoint.msg"
+  "msg/PilotCommand.msg"
   "srv/GetDroneState.srv"
   DEPENDENCIES
     std_msgs geometry_msgs sensor_msgs vision_msgs builtin_interfaces
