@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'state_node = drone_state.state_node:main'
+            'state_node = drone_state.state_node:main',
+            'state_node_sim = drone_state.state_node_sim:main',
         ],
     },
 )
