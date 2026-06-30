@@ -1,0 +1,4 @@
+bool arm          # True = armar, False = desarmar
+---
+bool success
+string message

@@ -1,0 +1,4 @@
+string mode       # 'GUIDED', 'LAND', 'STABILIZE', etc.
+---
+bool success
+string message

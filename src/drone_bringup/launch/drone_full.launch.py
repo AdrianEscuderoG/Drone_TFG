@@ -64,9 +64,16 @@ def generate_launch_description():
     )
     use_sim_time_arg = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='true',
-        description='Usar tiempo de simulación (true para SITL)',
+        default_value='false',
+        description='Usar tiempo de simulación (true para GAZEBO). Si no está Gazebo activo, no hay topic /clock',
     )
+
+    auto_arm_arg = DeclareLaunchArgument(
+        'auto_arm',
+        default_value='false',
+        description='Armar automáticamente al conectar (true solo en SITL)',
+    )
+    auto_arm = LaunchConfiguration('auto_arm')
 
     fcu_url = LaunchConfiguration('fcu_url')
     gcs_url = LaunchConfiguration('gcs_url')
@@ -116,7 +123,10 @@ def generate_launch_description():
         executable='emitter_node',
         name='emitter_node',
         output='screen',
-        parameters=[{'use_sim_time': use_sim_time}],
+        parameters=[{
+            'use_sim_time': use_sim_time,
+            'auto_arm': auto_arm,
+        }],
     )
 
     # ------------------------------------------------------------------
@@ -134,14 +144,15 @@ def generate_launch_description():
     # 5. Piloto autónomo: máquina de estados + PID
     # ------------------------------------------------------------------
     pilot_node = Node(
-        package='drone_pilot',
-        executable='pilot_node',
-        name='pilot_node',
-        output='screen',
-        parameters=[
-            pilot_params,
-            {'use_sim_time': use_sim_time},
-        ],
+    package='drone_pilot',
+    executable='pilot_node',
+    name='pilot_node',
+    output='screen',
+    parameters=[
+        pilot_params,
+        {'use_sim_time': use_sim_time},
+        {'require_vio': False},   # ← quitar cuando el VIO esté validado
+    ],
     )
 
     # ------------------------------------------------------------------
@@ -162,6 +173,7 @@ def generate_launch_description():
         gcs_url_arg,
         with_vio_arg,
         use_sim_time_arg,
+        auto_arm_arg,
 
         LogInfo(msg='=== Iniciando stack completo del dron ==='),
         LogInfo(msg=['FCU URL: ', fcu_url]),
