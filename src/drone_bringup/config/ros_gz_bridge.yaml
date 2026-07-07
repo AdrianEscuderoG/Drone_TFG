@@ -1,17 +1,33 @@
-- ros_topic_name: "/drone/image"
-  gz_topic_name: "/world/iris_runway/model/iris_with_gimbal/model/gimbal/link/pitch_link/sensor/camera/image"
+# ros_gz_bridge.yaml
+# Traduce topics internos de Gazebo Harmonic → topics ROS 2
+# Modelo: iris_with_stereo en world iris_runway
+
+- ros_topic_name: "/cam0/image_raw"
+  gz_topic_name: "/world/iris_runway/model/iris_with_stereo/link/cam0_link/sensor/cam0/image"
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/drone/camera_info"
-  gz_topic_name: "/world/iris_runway/model/iris_with_gimbal/model/gimbal/link/pitch_link/sensor/camera/camera_info"
+- ros_topic_name: "/cam0/camera_info"
+  gz_topic_name: "/world/iris_runway/model/iris_with_stereo/link/cam0_link/sensor/cam0/camera_info"
   ros_type_name: "sensor_msgs/msg/CameraInfo"
   gz_type_name: "gz.msgs.CameraInfo"
   direction: GZ_TO_ROS
 
-- ros_topic_name: "/drone/imu"
-  gz_topic_name: "/world/iris_runway/model/iris_with_gimbal/model/iris_with_standoffs/link/imu_link/sensor/imu_sensor/imu"
+- ros_topic_name: "/cam1/image_raw"
+  gz_topic_name: "/world/iris_runway/model/iris_with_stereo/link/cam1_link/sensor/cam1/image"
+  ros_type_name: "sensor_msgs/msg/Image"
+  gz_type_name: "gz.msgs.Image"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/cam1/camera_info"
+  gz_topic_name: "/world/iris_runway/model/iris_with_stereo/link/cam1_link/sensor/cam1/camera_info"
+  ros_type_name: "sensor_msgs/msg/CameraInfo"
+  gz_type_name: "gz.msgs.CameraInfo"
+  direction: GZ_TO_ROS
+
+- ros_topic_name: "/imu0"
+  gz_topic_name: "/world/iris_runway/model/iris_with_stereo/model/iris_with_standoffs/link/imu_link/sensor/imu_sensor/imu"
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS

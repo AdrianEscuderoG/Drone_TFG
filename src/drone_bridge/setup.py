@@ -24,7 +24,6 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'receiver_node_px4 = drone_bridge.receiver_node_px4:main',
             'receiver_node_ardu = drone_bridge.receiver_node_ardu:main',
             'emitter_node = drone_bridge.emitter_node:main',
         ],
