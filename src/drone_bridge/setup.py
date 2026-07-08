@@ -26,6 +26,8 @@ setup(
         'console_scripts': [
             'receiver_node_ardu = drone_bridge.receiver_node_ardu:main',
             'emitter_node = drone_bridge.emitter_node:main',
+            'image_receiver_node = drone_bridge.image_receiver_node:main',
+            'calib_recorder_node = drone_bridge.calib_recorder_node:main',
         ],
     },
 )
