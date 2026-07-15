@@ -42,8 +42,6 @@ class CalibRecorderNode(Node):
         self.declare_parameter("output_dir", "~/basalt_calib_data/session")
         self.declare_parameter("cam0_topic", "/cam0/image_raw")
         self.declare_parameter("cam1_topic", "/cam1/image_raw")
-        # Asunción a confirmar: topic de IMU cruda publicado por MAVROS tras
-        # el mapeo de HIGHRES_IMU. Cambiar aquí si tu configuración usa otro.
         self.declare_parameter("imu_topic", "/mavros/imu/data_raw")
 
         output_dir = os.path.expanduser(self.get_parameter("output_dir").value)
