@@ -79,7 +79,8 @@ class PilotNode(Node):
         self.declare_parameter('yaw_tol', 0.1)       # rad
         self.declare_parameter('default_takeoff_alt', 5.0)  # m
         self.declare_parameter('require_vio', True)
-
+        self.declare_parameter('sim_mode', True)
+        
         kp_xy  = self.get_parameter('kp_xy').value
         ki_xy  = self.get_parameter('ki_xy').value
         kd_xy  = self.get_parameter('kd_xy').value
@@ -95,6 +96,7 @@ class PilotNode(Node):
         self._tol_yaw = self.get_parameter('yaw_tol').value
         self._default_takeoff_alt = self.get_parameter('default_takeoff_alt').value
         self.require_vio = self.get_parameter('require_vio').value
+        self.sim_mode = self.get_parameter('sim_mode').value
 
         # --- Controladores PID ---
         self._pid_x   = PIDController(kp_xy,  ki_xy, kd_xy, -max_vel_xy,   max_vel_xy)
@@ -125,8 +127,14 @@ class PilotNode(Node):
         # --- Suscripciones ---
         self.create_subscription(
             DroneStatus,  '/drone/state',      self._on_drone_state,  RELIABLE_QOS)
+        state_topic = '/mavros/state' if self.sim_mode else '/drone/fcu_state'
         self.create_subscription(
-            MavrosState,  '/mavros/state',     self._on_mavros_state, RELIABLE_QOS)
+            MavrosState, state_topic, self._on_mavros_state, RELIABLE_QOS)
+
+        self.get_logger().info(
+            f'pilot_node: sim_mode={self.sim_mode} — '
+            f'escuchando estado FCU en {state_topic}'
+        )
         self.create_subscription(
             PilotCommand, '/drone/pilot_cmd',  self._on_command,      RELIABLE_QOS)
 

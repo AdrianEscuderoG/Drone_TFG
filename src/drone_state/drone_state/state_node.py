@@ -4,6 +4,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
+from std_msgs.msg import Float32
+from mavros_msgs.msg import State as MavrosState
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu, NavSatFix
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
@@ -17,11 +19,6 @@ SENSOR_QOS = QoSProfile(
 
 VIO_TIMEOUT_SEC = 0.5
 GPS_TIMEOUT_SEC = 2.0
-
-# TODO: armed / flight_mode / battery ya no llegan por PX4.
-# Decidir origen MAVROS (receiver_node_ardu republicando, o suscripcion
-# directa a /mavros/state y /mavros/battery aqui) antes de volver a
-# rellenar estos campos de DroneStatus.
 
 
 class StateNode(Node):
@@ -39,6 +36,10 @@ class StateNode(Node):
             NavSatFix, '/drone/gps', self._cb_gps, SENSOR_QOS)
         self.create_subscription(
             Imu, '/drone/imu', self._cb_imu, SENSOR_QOS)
+        self.create_subscription(
+            MavrosState, '/drone/fcu_state', self._cb_fcu_state, SENSOR_QOS)
+        self.create_subscription(
+            Float32, '/drone/battery_percentage', self._cb_battery, SENSOR_QOS)
 
         self._pub_state = self.create_publisher(
             DroneStatus, '/drone/state',
@@ -54,7 +55,15 @@ class StateNode(Node):
         self.create_timer(0.1, self._publish_state)
         self.get_logger().info('state_node iniciado')
 
-    # --- Callbacks VIO / GPS / IMU ---
+    # --- Callbacks State/ Battery / VIO / GPS / IMU ---
+
+    def _cb_fcu_state(self, msg: MavrosState) -> None:
+        self._state.armed = msg.armed
+        self._state.flight_mode = msg.mode
+
+    def _cb_battery(self, msg: Float32) -> None:
+        # Float32 llega en 0-100; BatteryState.percentage se espera en 0-1
+        self._state.battery.percentage = msg.data / 100.0
 
     def _cb_vio(self, msg: Odometry) -> None:
         self._last_vio_time = self.get_clock().now()

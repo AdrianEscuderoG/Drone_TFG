@@ -11,7 +11,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 # Tipos de entrada (MAVROS publica estos)
-from sensor_msgs.msg import Imu, NavSatFix
+from sensor_msgs.msg import Imu, NavSatFix, BatteryState
 from mavros_msgs.msg import State
 from std_msgs.msg import Float32
 
@@ -25,7 +25,7 @@ class ReceiverNode(Node):
     Suscribe a MAVROS y republica en topics propios del proyecto.
 
     Entradas  (MAVROS):
-      /mavros/imu/data          sensor_msgs/Imu       @ 10 Hz
+      /mavros/imu/data_raw          sensor_msgs/Imu       @ 10 Hz
       /mavros/global_position/global  sensor_msgs/NavSatFix @ 10 Hz
       /mavros/state             mavros_msgs/State     @  1 Hz
 
@@ -67,7 +67,7 @@ class ReceiverNode(Node):
 
         self.sub_imu = self.create_subscription(
             Imu,
-            '/mavros/imu/data',
+            '/mavros/imu/data_raw',
             self.cb_imu,
             mavros_qos
         )
@@ -86,22 +86,26 @@ class ReceiverNode(Node):
             self.cb_state,
             10  # depth=10, RELIABLE por defecto
         )
+        # Batería: mismo patrón que imu/gps (BEST_EFFORT, baja frecuencia
+        # pero MAVROS la publica con ese perfil por defecto en este plugin)
+        self.sub_battery = self.create_subscription(
+            BatteryState,
+            '/mavros/battery',
+            self.cb_battery,
+            mavros_qos
+        )
 
         # --- PUBLICACIONES EN TOPICS PROPIOS ---
 
         self.pub_imu = self.create_publisher(Imu, '/drone/imu', out_qos)
         self.pub_gps = self.create_publisher(NavSatFix, '/drone/gps', out_qos)
         self.pub_battery = self.create_publisher(Float32, '/drone/battery_percentage', out_qos)
+        self.pub_state = self.create_publisher(State, '/drone/fcu_state', out_qos)
 
         # Estado interno del dron (actualizado por cb_state)
         self.connected = False
         self.armed = False
         self.mode = ''
-
-        # Timer para publicar batería simulada a 1 Hz.
-        # SITL no simula batería real; cuando tengas el dron físico
-        # sustituye esto por una suscripción a /mavros/battery.
-        self.create_timer(1.0, self.publish_battery)
 
         self.get_logger().info('receiver_node iniciado')
 
@@ -143,16 +147,18 @@ class ReceiverNode(Node):
         self.connected = msg.connected
         self.armed = msg.armed
         self.mode = msg.mode
+        self.pub_state.publish(msg)
+    # ------------------------------------------------------------------
+    # CALLBACK BATERÍA
+    # BatteryState.percentage viene normalizado en [0.0, 1.0], por lo
+    # que se escala a porcentaje (0-100) para mantener el mismo formato
 
     # ------------------------------------------------------------------
-    # BATERÍA SIMULADA
-    # SITL no publica /mavros/battery con datos reales.
-    # Publicamos 100% hasta tener hardware real.
-    # ------------------------------------------------------------------
-    def publish_battery(self):
-        msg = Float32()
-        msg.data = 100.0
-        self.pub_battery.publish(msg)
+    def cb_battery(self, msg: BatteryState):
+        out = Float32()
+        out.data = msg.percentage * 100.0
+        self.pub_battery.publish(out)
+
 
 
 def main(args=None):
