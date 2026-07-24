@@ -20,6 +20,11 @@ SENSOR_QOS = QoSProfile(
 VIO_TIMEOUT_SEC = 0.5
 GPS_TIMEOUT_SEC = 2.0
 
+# TODO: armed / flight_mode / battery ya no llegan por PX4.
+# Decidir origen MAVROS (receiver_node_ardu republicando, o suscripcion
+# directa a /mavros/state y /mavros/battery aqui) antes de volver a
+# rellenar estos campos de DroneStatus.
+
 
 class StateNode(Node):
 
@@ -55,14 +60,12 @@ class StateNode(Node):
         self.create_timer(0.1, self._publish_state)
         self.get_logger().info('state_node iniciado')
 
-    # --- Callbacks State/ Battery / VIO / GPS / IMU ---
-
+    # --- Callbacks VIO / GPS / IMU ---
     def _cb_fcu_state(self, msg: MavrosState) -> None:
         self._state.armed = msg.armed
         self._state.flight_mode = msg.mode
 
     def _cb_battery(self, msg: Float32) -> None:
-        # Float32 llega en 0-100; BatteryState.percentage se espera en 0-1
         self._state.battery.percentage = msg.data / 100.0
 
     def _cb_vio(self, msg: Odometry) -> None:

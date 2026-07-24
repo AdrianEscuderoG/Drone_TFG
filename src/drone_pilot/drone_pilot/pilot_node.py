@@ -33,7 +33,6 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 from geometry_msgs.msg import TwistStamped
-from mavros_msgs.msg import State as MavrosState
 from std_msgs.msg import String
 
 from drone_msgs.msg import DroneStatus, PilotCommand
@@ -79,8 +78,7 @@ class PilotNode(Node):
         self.declare_parameter('yaw_tol', 0.1)       # rad
         self.declare_parameter('default_takeoff_alt', 5.0)  # m
         self.declare_parameter('require_vio', True)
-        self.declare_parameter('sim_mode', True)
-        
+
         kp_xy  = self.get_parameter('kp_xy').value
         ki_xy  = self.get_parameter('ki_xy').value
         kd_xy  = self.get_parameter('kd_xy').value
@@ -96,7 +94,6 @@ class PilotNode(Node):
         self._tol_yaw = self.get_parameter('yaw_tol').value
         self._default_takeoff_alt = self.get_parameter('default_takeoff_alt').value
         self.require_vio = self.get_parameter('require_vio').value
-        self.sim_mode = self.get_parameter('sim_mode').value
 
         # --- Controladores PID ---
         self._pid_x   = PIDController(kp_xy,  ki_xy, kd_xy, -max_vel_xy,   max_vel_xy)
@@ -127,14 +124,7 @@ class PilotNode(Node):
         # --- Suscripciones ---
         self.create_subscription(
             DroneStatus,  '/drone/state',      self._on_drone_state,  RELIABLE_QOS)
-        state_topic = '/mavros/state' if self.sim_mode else '/drone/fcu_state'
-        self.create_subscription(
-            MavrosState, state_topic, self._on_mavros_state, RELIABLE_QOS)
 
-        self.get_logger().info(
-            f'pilot_node: sim_mode={self.sim_mode} — '
-            f'escuchando estado FCU en {state_topic}'
-        )
         self.create_subscription(
             PilotCommand, '/drone/pilot_cmd',  self._on_command,      RELIABLE_QOS)
 
@@ -160,6 +150,15 @@ class PilotNode(Node):
     # ------------------------------------------------------------------
 
     def _on_drone_state(self, msg: DroneStatus) -> None:
+        prev_armed = self._mavros_armed
+        self._mavros_armed = msg.armed
+        self._mavros_mode = msg.flight_mode
+
+        if self._mavros_armed and not prev_armed and self._takeoff_pending:
+            self.get_logger().info('Dron armado — iniciando despegue.')
+            self._takeoff_pending = False
+            self._switch(FlightState.TAKING_OFF)
+
         p = msg.pose.pose.pose.position
         self._pos = [p.x, p.y, p.z]
         q = msg.pose.pose.pose.orientation
@@ -174,16 +173,7 @@ class PilotNode(Node):
             self.get_logger().error('VIO perdido durante el vuelo. Emergencia.')
             self._switch(FlightState.EMERGENCY)
 
-    def _on_mavros_state(self, msg: MavrosState) -> None:
-        prev_armed         = self._mavros_armed
-        self._mavros_armed = msg.armed
-        self._mavros_mode  = msg.mode
 
-        # Si acabamos de armarnos y hay un takeoff pendiente, despegar
-        if self._mavros_armed and not prev_armed and self._takeoff_pending:
-            self.get_logger().info('Dron armado — iniciando despegue.')
-            self._takeoff_pending = False
-            self._switch(FlightState.TAKING_OFF)
 
     def _on_command(self, msg: PilotCommand) -> None:
         if msg.command_type == PilotCommand.TAKEOFF:
