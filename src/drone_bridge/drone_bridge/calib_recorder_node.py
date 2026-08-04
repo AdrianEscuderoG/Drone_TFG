@@ -6,9 +6,9 @@ Se suscribe a /cam0/image_raw, /cam1/image_raw y al topic de IMU cruda, y
 vuelca cada mensaje a disco en formato EuRoC MAV, tal como lo espera Basalt
 para la calibración cámara-IMU:
 
-    <output_dir>/mav0/cam0/data/<timestamp_ns>.png
+    <output_dir>/mav0/cam0/data/<timestamp_ns>_cycle<cycle_id>.png
     <output_dir>/mav0/cam0/data.csv
-    <output_dir>/mav0/cam1/data/<timestamp_ns>.png
+    <output_dir>/mav0/cam1/data/<timestamp_ns>_cycle<cycle_id>.png
     <output_dir>/mav0/cam1/data.csv
     <output_dir>/mav0/imu0/data.csv
 
@@ -18,6 +18,14 @@ su propio timestamp (ya corregido por image_receiver_node en el caso de las
 cámaras). Empieza a grabar en cuanto arranca; no hay servicio de start/stop,
 así que arráncalo solo después de confirmar que todos los publishers (MAVROS,
 image_receiver_node) ya están activos, para no perder los primeros frames.
+
+El cycle_id (identificador de ciclo de disparo compartido por cam0/cam1,
+asignado en el ESP32 master) viaja en header.frame_id como "camN:cycle_id"
+-- ver image_receiver_node.py. Se incluye en el NOMBRE del fichero .png,
+no como columna nueva en el CSV: el formato de nombre de fichero es
+arbitrario para Basalt (verificado a mano), pero el esquema del CSV
+(#timestamp [ns], filename) no se ha verificado y no se toca, para no
+arriesgar el parseo de una herramienta oficial.
 """
 
 import csv
@@ -33,6 +41,11 @@ from sensor_msgs.msg import Image, Imu
 
 def stamp_to_ns(stamp) -> int:
     return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+
+
+def parse_frame_id(frame_id: str) -> int:
+    """Extrae cycle_id del frame_id 'camN:cycle_id' publicado por image_receiver_node."""
+    return int(frame_id.split(":")[1])
 
 
 class CalibRecorderNode(Node):
@@ -117,7 +130,8 @@ class CalibRecorderNode(Node):
 
         def callback(msg: Image):
             ts_ns = stamp_to_ns(msg.header.stamp)
-            filename = f"{ts_ns}.png"
+            cycle_id = parse_frame_id(msg.header.frame_id)
+            filename = f"{ts_ns}_cycle{cycle_id:06d}.png"
             cv_image = self._bridge.imgmsg_to_cv2(msg, desired_encoding="mono8")
             cv2.imwrite(os.path.join(data_dir, filename), cv_image)
             writer.writerow([ts_ns, filename])

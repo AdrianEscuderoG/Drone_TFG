@@ -33,7 +33,7 @@ from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
-HEADER_SIZE = 17
+HEADER_SIZE = 21
 MAGIC_BYTES = b"\xCA\xFE"
 UDP_RECV_BUFSIZE = 65535
 
@@ -100,11 +100,13 @@ class ImageReceiverNode(Node):
         frame_num = struct.unpack(">I", data[3:7])[0]
         frame_size = struct.unpack(">H", data[7:9])[0]
         timestamp_us = struct.unpack(">Q", data[9:17])[0]
+        cycle_id = struct.unpack(">I", data[17:21])[0]   # NUEVO
         return {
             "cam_id": cam_id,
             "frame_num": frame_num,
             "frame_size": frame_size,
             "timestamp_us": timestamp_us,
+            "cycle_id": cycle_id,   # NUEVO
         }
 
     # ------------------------------------------------------------------
@@ -159,7 +161,8 @@ class ImageReceiverNode(Node):
             payload = data[HEADER_SIZE:]
             if len(payload) != header["frame_size"]:
                 self.get_logger().warn(
-                    f"Tamaño de payload no coincide (cam{cam_id}): "
+                    f"Tamaño de payload no coincide (cam{cam_id}, "
+                    f"cycle={header['cycle_id']}): "
                     f"esperado {header['frame_size']}, recibido {len(payload)}",
                     throttle_duration_sec=5.0,
                 )
@@ -178,7 +181,7 @@ class ImageReceiverNode(Node):
             if img is None:
                 self.get_logger().warn(
                     f"Frame JPEG corrupto descartado (cam{cam_id}, "
-                    f"frame_num={header['frame_num']})",
+                    f"cycle={header['cycle_id']}, frame_num={header['frame_num']})",
                     throttle_duration_sec=5.0,
                 )
                 continue
@@ -188,7 +191,7 @@ class ImageReceiverNode(Node):
             nanosec = int((stamp_sec - sec) * 1e9)
             msg.header.stamp.sec = sec
             msg.header.stamp.nanosec = nanosec
-            msg.header.frame_id = f"cam{cam_id}"
+            msg.header.frame_id = f"cam{cam_id}:{header['cycle_id']}"
 
             self._publishers_by_cam[cam_id].publish(msg)
 
