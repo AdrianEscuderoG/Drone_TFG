@@ -73,9 +73,6 @@ class StateNode(Node):
         self._last_odom_time = None
         self._last_gps_time  = None
 
-        # Batería: valor inicial 100 % mientras no llegue dato real.
-        # En SITL, /mavros/battery puede no publicar nada.
-        self._drone_state.battery.percentage = 1.0
 
         # ── Suscripción a la fuente de odometría ──────────────────────────
         if self._odom_src == 'mavros_local':
