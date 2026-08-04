@@ -116,7 +116,7 @@ class StateNode(Node):
         self.create_subscription(
             Float32,
             '/drone/battery_percentage',
-            self._cb_mavros_battery,
+            self._cb_battery,
             SENSOR_QOS,
         )
 
