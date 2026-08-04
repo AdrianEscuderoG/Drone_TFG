@@ -1,0 +1,10 @@
+{
+  "tagFamily": "tag36h11",
+  "tagCols": 6,
+  "tagRows": 6,
+  "tagSize": 0.08,
+  "tagSpacing": 0.3,
+  "boardWidthMeters": 0.648,
+  "boardHeightMeters": 0.648,
+  "note": "tagId = row * tagCols + col, fila 0 arriba, tal como se ha renderizado en aprilgrid_6x6.png"
+}
