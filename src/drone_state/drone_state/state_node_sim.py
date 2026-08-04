@@ -17,10 +17,12 @@ Publicaciones
   /diagnostics    diagnostic_msgs/DiagnosticArray
 """
 
+from px4_msgs import msg
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
+from std_msgs.msg import Float32
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix, BatteryState
 from mavros_msgs.msg import State as MavrosState
@@ -107,7 +109,7 @@ class StateNode(Node):
         # /mavros/state: armed, mode, connected — publicado a ~1 Hz con RELIABLE
         self.create_subscription(
             MavrosState,
-            '/mavros/state',
+            '/drone/fcu_state',
             self._cb_mavros_state,
             RELIABLE_QOS,
         )
@@ -115,8 +117,8 @@ class StateNode(Node):
         # /mavros/battery: puede no existir en SITL — el valor inicial
         # 100 % se mantiene si no llega ningún mensaje.
         self.create_subscription(
-            BatteryState,
-            '/mavros/battery',
+            Float32,
+            '/drone/battery_percentage',
             self._cb_mavros_battery,
             SENSOR_QOS,
         )
@@ -185,8 +187,8 @@ class StateNode(Node):
         if msg.mode != prev_mode:
             self.get_logger().info(f'Modo de vuelo → {msg.mode}')
 
-    def _cb_mavros_battery(self, msg: BatteryState) -> None:
-        self._drone_state.battery = msg
+    def _cb_battery(self, msg: Float32) -> None:
+        self._drone_state.battery.percentage = msg.data / 100.0
 
     # ────────────────────────────────────────────────────────────────────────
     # Watchdog
