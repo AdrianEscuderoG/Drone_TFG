@@ -11,7 +11,7 @@ def generate_launch_description():
     config_arg = DeclareLaunchArgument(
         'config',
         default_value='drone_colabo',
-        description='Config de OpenVINS. Usar drone_colabo cuando se calibre hardware real.'
+        description='Config de OpenVINS. Usar drone_colabo (sin _sim) solo con hardware real calibrado.'
     )
 
     # Bridge Gazebo → ROS 2: expone cámara e IMU del simulador como topics ROS 2
@@ -38,8 +38,8 @@ def generate_launch_description():
         ]),
         launch_arguments={
             'config': LaunchConfiguration('config'),
-        'use_stereo': 'false',
-        'max_cameras': '1',
+            'use_stereo': 'true',
+            'max_cameras': '2',
         }.items()
     )
 
