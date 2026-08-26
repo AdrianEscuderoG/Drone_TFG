@@ -1,0 +1,38 @@
+# rtabmap_stereo.yaml
+# Configuración de RTAB-Map
+
+/**/rtabmap:
+  ros__parameters:
+
+    # --- Frames ---
+    # base_link: coincide con el child-frame-id de los static_transform_publisher
+    #   de cam0_link/cam1_link y con la TF dinámica que publica MAVROS.
+    # odom: coincide con tf.frame_id de local_position (ya configurado, no "map").
+    # map NO se define aquí -- RTAB-Map lo publica él mismo (map -> odom),
+    #   igual que ya está documentado en el diseño.
+    frame_id: "base_link"
+    odom_frame_id: "odom"
+
+    # --- Modo de entrada: estéreo, no depth ni RGB-D ---
+    subscribe_stereo: true
+    subscribe_depth: false
+    subscribe_rgbd: false
+
+    # --- Sincronización ---
+    # approx_sync: true porque cam0/cam1/odom llegan de publishers
+    #   independientes, sin timestamp compartido exacto (confirmado en la
+    #   cadena: bridge Gazebo -> ROS por topic, cada uno con su propio timing).
+    approx_sync: true
+    queue_size: 10
+    wait_for_transform_duration: "0.2"
+
+    Grid/3D: "true"
+    # --- Comportamiento SLAM ---
+    # Deja el detector de loop closure y el resto de parámetros en su valor por defecto de RTAB-Map
+    Rtabmap/DetectionRate: "1"       # Hz de detección de loop closure
+    Rtabmap/CreateIntermediateNodes: "false"
+
+    # --- Uso de GPU si está disponible (Quadro M2000M, Maxwell) ---
+    OdomF2M/MaxSize: "1000"
+
+    use_sim_time: true

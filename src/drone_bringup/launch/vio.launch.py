@@ -14,6 +14,12 @@ def generate_launch_description():
         description='Config de OpenVINS. Usar drone_colabo (sin _sim) solo con hardware real calibrado.'
     )
 
+    verbosity_arg = DeclareLaunchArgument(
+    'verbosity',
+    default_value='INFO',
+    description='Verbosidad de OpenVINS (SILENT, ERROR, WARNING, INFO, DEBUG, ALL)'
+    )
+
     # Bridge Gazebo → ROS 2: expone cámara e IMU del simulador como topics ROS 2
     bridge_node = Node(
         package='ros_gz_bridge',
@@ -37,14 +43,16 @@ def generate_launch_description():
             ])
         ]),
         launch_arguments={
-            'config': LaunchConfiguration('config'),
-            'use_stereo': 'true',
-            'max_cameras': '2',
+        'config': LaunchConfiguration('config'),
+        'use_stereo': 'false',
+        'max_cameras': '1',
+        'verbosity': LaunchConfiguration('verbosity'),   # ← añadir esta línea
         }.items()
     )
 
     return LaunchDescription([
         config_arg,
+        verbosity_arg,
         bridge_node,
         vio_launch,
     ])

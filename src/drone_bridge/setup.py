@@ -28,6 +28,7 @@ setup(
             'emitter_node = drone_bridge.emitter_node:main',
             'image_receiver_node = drone_bridge.image_receiver_node:main',
             'calib_recorder_node = drone_bridge.calib_recorder_node:main',
+            'stereo_camera_info_fix_node = drone_bridge.stereo_camera_info_fix_node:main',
         ],
     },
 )

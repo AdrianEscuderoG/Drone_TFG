@@ -7,6 +7,7 @@
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
+  publisher_queue: 50
 
 - ros_topic_name: "/cam0/camera_info"
   gz_topic_name: "/world/iris_runway/model/iris_with_stereo/link/cam0_link/sensor/cam0/camera_info"
@@ -19,6 +20,7 @@
   ros_type_name: "sensor_msgs/msg/Image"
   gz_type_name: "gz.msgs.Image"
   direction: GZ_TO_ROS
+  publisher_queue: 50
 
 - ros_topic_name: "/cam1/camera_info"
   gz_topic_name: "/world/iris_runway/model/iris_with_stereo/link/cam1_link/sensor/cam1/camera_info"
@@ -31,6 +33,7 @@
   ros_type_name: "sensor_msgs/msg/Imu"
   gz_type_name: "gz.msgs.IMU"
   direction: GZ_TO_ROS
+  publisher_queue: 200
   
 - ros_topic_name: "/clock"
   gz_topic_name: "/clock"
